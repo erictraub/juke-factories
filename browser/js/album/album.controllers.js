@@ -1,61 +1,70 @@
 'use strict';
 
-juke.controller('AlbumCtrl', function($scope, $http, $rootScope, $log, StatsFactory, AlbumFactory) {
+juke.controller('AlbumCtrl', function($scope, $http, $rootScope, $log, StatsFactory, AlbumFactory, PlayerFactory) {
 
-AlbumFactory.fetchById("56f98cbb27ad88a4f83d6685")
-  .then(function (album) {
-    album.imageUrl = '/api/albums/' + album._id + '.image';
-    album.songs.forEach(function (song, i) {
-      song.audioUrl = '/api/songs/' + song._id + '.audio';
-      song.albumIndex = i;
-    });
-    $scope.album = album;
-    return album;
-  })
-  .then(function(album) {
-    return StatsFactory.totalTime(album);
-  })
-  .then(function(totalTime) {
-    totalTime = String((totalTime / 60).toFixed(2)) + ' minutes';
-    $scope.album.totalTime = totalTime;
-  })
-  .catch($log.error); // $log service can be turned on and off; also, pre-bound
-
-  // main toggle
   $scope.toggle = function (song) {
-    if ($scope.playing && song === $scope.currentSong) {
-      $rootScope.$broadcast('pause');
-    } else $rootScope.$broadcast('play', song);
+    if (PlayerFactory.isPlaying() && song === PlayerFactory.getCurrentSong()) {
+      PlayerFactory.pause();
+    } else if (PlayerFactory.currentSong){
+      PlayerFactory.resume();
+    } else {
+      PlayerFactory.start(song, $scope.album.songs);
+    }
   };
 
-  // incoming events (from Player, toggle, or skip)
-  $scope.$on('pause', pause);
-  $scope.$on('play', play);
-  $scope.$on('next', next);
-  $scope.$on('prev', prev);
+  $scope.playing = PlayerFactory.isPlaying;
+  $scope.currentSong = PlayerFactory.getCurrentSong;
 
-  // functionality
-  function pause () {
-    $scope.playing = false;
-  }
-  function play (event, song) {
-    $scope.playing = true;
-    $scope.currentSong = song;
+  $scope.next = function() {
+    PlayerFactory.next();
   };
 
-  // a "true" modulo that wraps negative to the top of the range
-  function mod (num, m) { return ((num % m) + m) % m; };
-
-  // jump `interval` spots in album (negative to go back, default +1)
-  function skip (interval) {
-    if (!$scope.currentSong) return;
-    var index = $scope.currentSong.albumIndex;
-    index = mod( (index + (interval || 1)), $scope.album.songs.length );
-    $scope.currentSong = $scope.album.songs[index];
-    if ($scope.playing) $rootScope.$broadcast('play', $scope.currentSong);
+  $scope.prev = function() {
+    PlayerFactory.previous();
   };
-  function next () { skip(1); };
-  function prev () { skip(-1); };
+
+  $scope.showAlbums = true;
+  $scope.showAlbum = false;
+
+  $rootScope.$on('showAllAlbums', function() {
+    $scope.showAlbums = true;
+    $scope.showAlbum = false;
+
+  });
+
+  $rootScope.$on('ShowAllArtists', function() {
+    $scope.showAlbums = false;
+    $scope.showAlbum = false;
+  });
+
+  $rootScope.$on('ShowArtist', function() {
+    $scope.showAlbums = false;
+    $scope.showAlbum = false;
+  });
+
+  $rootScope.$on('showAlbum', function(event, data) {
+    AlbumFactory.fetchById(data.albumID)
+    .then(function (album) {
+      album.imageUrl = '/api/albums/' + album._id + '.image';
+      album.songs.forEach(function (song, i) {
+        song.audioUrl = '/api/songs/' + song._id + '.audio';
+        song.albumIndex = i;
+      });
+      $scope.album = album;
+      return album;
+    })
+    .then(function(album) {
+      return StatsFactory.totalTime(album);
+    })
+    .then(function(totalTime) {
+      totalTime = String((totalTime / 60).toFixed(2)) + ' minutes';
+      $scope.album.totalTime = totalTime;
+      $scope.showAlbum = true;
+      $scope.showAlbums = false;
+    })
+    .catch($log.error);
+  })
+
 
 });
 
@@ -99,7 +108,7 @@ juke.factory('AlbumFactory', function($http) {
 })
 
 
-juke.controller('AlbumsController', function($log, $scope, AlbumFactory) {
+juke.controller('AlbumsController', function($log, $scope, AlbumFactory, $rootScope) {
   AlbumFactory.fetchAll().then(function(albums) {
     albums.forEach(function(album) {
       album.numSongs = album.songs.length;
@@ -107,9 +116,15 @@ juke.controller('AlbumsController', function($log, $scope, AlbumFactory) {
     });
     $scope.albums = albums;
   }).catch($log.error);
+
+  $scope.showAlbum = function(albumId) {
+    console.log('Album ID:', albumId);
+    $rootScope.$broadcast('showAlbum', {
+      albumID: albumId
+    });
+  };
 });
 
-// TEST THIS ^ AND ADD INTERPOLATION FOR IT IN HTML
 
 
 
